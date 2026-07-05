@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spyt"
+version = "1.1.0"
+description = "Migrate Spotify library (songs, playlists, artists) to YouTube Music for free"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "spotipy>=2.26.0",
+    "ytmusicapi>=1.12.0",
+    "thefuzz[speedup]>=0.22.0",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+]
+
+[project.scripts]
+spyt = "spyt.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]

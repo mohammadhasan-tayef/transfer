@@ -1,0 +1,6 @@
+spotipy>=2.26.0
+ytmusicapi>=1.12.0
+thefuzz[speedup]>=0.22.0
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+PySocks>=1.7.1
