@@ -2,6 +2,8 @@
 .cache
 .spyt/
 .tmp_spotdl/
+home-pack/
+MY_MIGRATION.md
 __pycache__/
 *.py[cod]
 *.egg-info/

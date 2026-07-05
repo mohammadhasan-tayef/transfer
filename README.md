@@ -1,187 +1,223 @@
-# spyt — Spotify to YouTube Music
+# spyt
 
-Migrate your **liked songs**, **playlists**, and **followed artists** from Spotify to YouTube Music — completely free. No paid services, no subscriptions. Everything runs locally on your machine.
+**Move your Spotify library to YouTube Music — free, local, and private.**
 
-## New here? Start here
+spyt copies your liked songs, playlists, and followed artists from Spotify to YouTube Music. It runs entirely on your computer. No paid migration services, no subscriptions, and your credentials never leave your machine.
 
-**No technical experience needed.**
-
-1. Install [Python 3.10+](https://www.python.org/downloads/) (check **"Add python.exe to PATH"** on Windows)
-2. Double-click **`install.bat`** once
-3. Double-click **`Start Spyt.bat`** and follow the steps on screen
-
-Full picture guide: **[GETTING_STARTED.md](GETTING_STARTED.md)**
-
-The guided wizard opens websites for you, picks files with a normal file window, and explains each step in plain language.
+Built for real-world constraints: restricted regions (VPN), no Spotify Premium developer access, and large libraries that take hours to transfer.
 
 ---
 
-| Spotify | YouTube Music |
-|---------|---------------|
-| Liked songs | Liked songs (thumbs up) |
-| Playlists | New playlists with matched tracks |
-| Followed artists | Subscribed artists |
+## What it does
 
-Tracks are matched automatically using title, artist, and duration. Items that can't be matched are saved to `.spyt/unmatched.json` so you can add them manually later.
+| Spotify | → | YouTube Music |
+|---------|---|---------------|
+| Liked songs | → | Thumbs-up / liked songs |
+| Playlists | → | New playlists with matched tracks |
+| Followed artists | → | Subscribed artists |
+
+Unmatched items are saved to `.spyt/unmatched.json` so you can add them manually later.
+
+---
+
+## Why spyt exists
+
+Most migration tools assume you can use Spotify’s official API with a Premium-linked developer app. That often fails for:
+
+- Users in **Iran and other filtered regions** (VPN required)
+- **Free Spotify** accounts blocked by developer policy
+- People who refuse to pay for **TuneMyMusic**, **Soundiiz**, etc.
+
+spyt’s recommended path uses **[Exportify](https://exportify.app)** to export your library in the browser, then migrates locally with **[ytmusicapi](https://github.com/sigma67/ytmusicapi)** — no Spotify API needed for the actual transfer.
+
+---
 
 ## Requirements
 
-- Python 3.10+
-- A YouTube Music account (free tier works for library management)
-- Spotify access (via VPN if you're in a restricted region like Iran)
-- Optional: Spotify Developer app — only if using `SPOTIFY_AUTH_MODE=custom`
+| | |
+|---|---|
+| **Python** | 3.10 or newer |
+| **Spotify** | Account + Exportify export (or API access if available) |
+| **YouTube Music** | Free Google account |
+| **VPN** | If Spotify or Google is blocked in your country |
+| **Time** | ~2–3 seconds per track — large libraries take hours |
 
-## Quick start
+---
 
-### 1. Install
+## Quick start (Windows)
 
-```bash
+The fastest way to run spyt on your own machine:
+
+```
+1. Install Python  →  https://www.python.org/downloads/
+                     (check "Add python.exe to PATH")
+
+2. install.bat     →  one-time setup
+
+3. Start Spyt.bat  →  guided wizard (4 steps)
+```
+
+The wizard opens websites when needed, shows a file picker for your Exportify zip, walks you through YouTube Music login, and starts the migration.
+
+**Taking work to another PC?** Fill in `MY_MIGRATION.md`, run `pack-for-home.bat`, and copy the `home-pack\` folder.
+
+---
+
+## Quick start (terminal)
+
+```powershell
+git clone <your-repo-url>
 cd spyt
 python -m venv .venv
-.venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS/Linux
+.venv\Scripts\activate
+pip install -e .
 
-pip install -r requirements.txt
+# One-time: copy .env.example to .env (defaults work for Exportify path)
+copy .env.example .env
+
+# Recommended workflow (no Spotify API)
+python -m spyt export-spotify          # opens Exportify
+python -m spyt import-exportify path\to\export.zip
+python -m spyt setup-ytmusic          # one-time browser auth
+python -m spyt migrate-all --from-backup
 ```
 
-### 2. Configure `.env`
+Check everything is ready:
 
-```bash
-copy .env.example .env        # Windows
-# cp .env.example .env        # macOS/Linux
-```
-
-Default auth mode is **`exportify`** — no Spotify Premium developer account needed.
-
-If you're in Iran or another restricted region, turn on your VPN and uncomment proxy lines in `.env`:
-
-```env
-HTTP_PROXY=http://127.0.0.1:7890
-HTTPS_PROXY=http://127.0.0.1:7890
-```
-
-Use the port your VPN app shows (Clash, v2rayN, Hiddify, etc.). For SOCKS5: `pip install pysocks` and set `HTTPS_PROXY=socks5://127.0.0.1:1080`.
-
-### 2b. Configure Spotify (optional — only for `custom` mode)
-
-Skip this if `SPOTIFY_AUTH_MODE=exportify` (default).
-
-### 3. Authorize both services (one-time each)
-
-```bash
-python -m spyt setup-spotify
-python -m spyt setup-ytmusic
-```
-
-- **Spotify**: Opens your browser; log in and approve access.
-- **YouTube Music**: Opens a browser flow; log in with the Google account tied to YouTube Music.
-
-Check setup:
-
-```bash
+```powershell
 python -m spyt status
 ```
 
-### 4. Migrate
+Test matching without writing anything:
 
-**Recommended:** run a dry run first to see match rates without changing anything:
-
-```bash
-python -m spyt migrate-all --dry-run
+```powershell
+python -m spyt migrate-all --from-backup --dry-run
 ```
 
-Then run the real migration:
+---
 
-```bash
-python -m spyt migrate-all
+## How it works
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌────────────────┐
+│  Exportify  │ ──► │ backup.json  │ ──► │   Matcher   │ ──► │ YouTube Music  │
+│  (browser)  │     │  (.spyt/)    │     │ fuzzy search│     │ likes + lists  │
+└─────────────┘     └──────────────┘     └─────────────┘     └────────────────┘
 ```
 
-Or migrate one category at a time:
+1. **Import** — Exportify ZIP → `.spyt/backup.json`
+2. **Filter** *(optional)* — keep only the playlists you want
+3. **Auth** — save YouTube Music browser session (one-time)
+4. **Match** — search YTM for each track; score by title, artist, duration
+5. **Write** — thumbs-up liked songs; create playlists in batches
 
-```bash
-python -m spyt migrate-liked
-python -m spyt migrate-playlists
-python -m spyt migrate-artists
-```
+Matching weights: title 50% · artist 35% · duration 15% · minimum score 70.
 
-### 5. Optional backup
-
-Export your Spotify library to JSON before migrating (useful if you want to re-run without hitting Spotify again):
-
-```bash
-python -m spyt backup
-python -m spyt migrate-all --from-backup
-```
+---
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `start` (default) | Guided setup wizard for beginners |
-| `setup-spotify` | Authorize Spotify |
-| `setup-ytmusic` | Authorize YouTube Music |
-| `status` | Show whether credentials are configured |
-| `backup` | Export Spotify library to `.spyt/backup.json` |
-| `migrate-liked` | Copy liked songs |
-| `migrate-playlists` | Copy playlists |
-| `migrate-artists` | Subscribe to followed artists |
-| `migrate-all` | Run all three migrations |
-| `--dry-run` | Match only, don't write to YouTube Music |
-| `import-exportify` | Import Exportify CSV/ZIP into backup.json |
-| `--from-backup` | Use local backup instead of Spotify API |
+| `start` | Guided wizard *(default when no args)* |
+| `export-spotify` | Open Exportify in browser |
+| `import-exportify <zip>` | Build `backup.json` from Exportify |
+| `list-playlists` | Show playlists in backup |
+| `export-keep-list` | Create editable playlist pick list |
+| `filter-backup` | Trim backup to selected playlists |
+| `setup-ytmusic` | One-time YouTube Music login |
+| `setup-spotify` | One-time Spotify API login *(optional)* |
+| `status` | Auth, proxy, and backup status |
+| `migrate-all` | Migrate liked songs + playlists + artists |
+| `migrate-liked` | Liked songs only |
+| `migrate-playlists` | Playlists only |
+| `migrate-artists` | Followed artists only |
+| `--from-backup` | Use local `backup.json` instead of Spotify API |
+| `--dry-run` | Match only — nothing written to YouTube Music |
 
-## How matching works
+---
 
-For each Spotify track, spyt searches YouTube Music and scores candidates by:
+## Playlist filtering
 
-- Title similarity
-- Artist similarity
-- Duration closeness
-- Preference for official song results over random videos
+If your Exportify export has dozens of playlists and you only want some:
 
-Only matches above a confidence threshold are imported. Expect ~90–98% match rates for mainstream music; obscure tracks, remixes, and region-locked content may not match.
+```powershell
+python -m spyt export-keep-list
+# Edit .spyt/keep_playlists.txt — delete or # lines you don't want
 
-## Cost
+python -m spyt filter-backup --from-file .spyt/keep_playlists.txt --keep-liked
+python -m spyt migrate-playlists --from-backup
+```
 
-Everything is free:
+---
 
-- **Spotify API** — free for personal use via a developer app
-- **ytmusicapi** — open-source, uses your own browser session
-- **This tool** — runs locally; your credentials never leave your machine
+## Iran / VPN
 
-## Iran / VPN / filtering
-
-Spotify and Google are often blocked in Iran. Use a VPN for all steps below.
+Spotify and Google are often blocked in Iran. For every step:
 
 1. Turn on your VPN (system-wide or per-app).
-2. Set proxy in `.env` if your VPN exposes a local HTTP/SOCKS port.
-3. Re-authorize: `python -m spyt setup-spotify` and `python -m spyt setup-ytmusic`.
+2. Set `AUTO_PROXY=true` in `.env` (default) — spyt auto-detects common local proxy ports.
+3. Or set manually:
+   ```env
+   HTTP_PROXY=http://127.0.0.1:7890
+   HTTPS_PROXY=http://127.0.0.1:7890
+   ```
+4. Re-run `setup-ytmusic` if auth fails mid-migration.
 
-**If Spotify API still fails**, use the offline Exportify path:
+---
 
-1. With VPN on, open [exportify.app](https://exportify.app/) in your browser.
-2. Log in to Spotify → click **Export All** → save the `.zip`.
-3. Import locally (no Spotify API needed):
+## YouTube Music login
 
-```bash
-python -m spyt import-exportify path\to\export.zip
-python -m spyt migrate-all --from-backup --dry-run
-python -m spyt migrate-all --from-backup
-```
+OAuth often returns HTTP 400. Use browser header auth instead:
+
+1. Open [music.youtube.com](https://music.youtube.com) in **Chrome** (logged in).
+2. Press **F12** → **Network** tab → filter: `browse`.
+3. Click **Library** in YouTube Music.
+4. Right-click a `youtubei/v1/browse` request → **Copy as cURL (cmd)**.
+5. Run `python -m spyt setup-ytmusic` and paste (Ctrl+Z, Enter on Windows).
+
+Use an API request — **not** the first page load (that has no cookies).
+
+---
 
 ## Troubleshooting
 
-**"Active premium subscription required for the owner of the app"** — Your personal Spotify Developer app is in sandbox mode. Set `SPOTIFY_AUTH_MODE=exportify` in `.env` (default), delete `.spyt/.spotify_cache`, then run `python -m spyt setup-spotify` again.
+| Problem | Fix |
+|---------|-----|
+| Spotify API Premium error | Use Exportify + `--from-backup` |
+| YouTube auth expired | `python -m spyt setup-ytmusic` |
+| Songs missing after run | Check `.spyt/unmatched.json` |
+| Duplicate playlists | Delete extras in YTM before re-running |
+| Migration very slow | Normal — rate-limited to ~0.35s per API call |
+| Interrupted migration | Copy `backup.json` to new PC; re-auth YTM; run again |
 
-**"Missing Spotify credentials"** — Only required for `SPOTIFY_AUTH_MODE=custom`. Use `exportify` mode instead.
+---
 
-**YouTube Music auth expired** — Re-run `python -m spyt setup-ytmusic`.
+## Project layout
 
-**Some songs didn't transfer** — Check `.spyt/unmatched.json`. You can search for those manually in YouTube Music.
+```
+spyt/
+├── spyt/              # Python package
+├── install.bat        # Windows one-time setup
+├── Start Spyt.bat     # Windows guided wizard
+├── pack-for-home.bat  # Bundle data for another computer
+├── MY_MIGRATION.md    # Personal checklist (gitignored — fill in locally)
+├── .spyt/             # Runtime data (gitignored)
+│   ├── backup.json
+│   ├── ytmusic_headers.json
+│   └── unmatched.json
+└── .env               # Config (gitignored)
+```
 
-**Duplicate playlists** — The tool creates new playlists each run. Delete duplicates in YouTube Music before re-running, or migrate categories individually.
+---
 
-**Rate limiting** — The tool pauses between requests automatically. For very large libraries (10k+ tracks), migration may take a while; that's normal.
+## Privacy
+
+- All processing is **local**.
+- `.spyt/` and `.env` are **gitignored** — never commit them.
+- Do not share `home-pack/` or `MY_MIGRATION.md` publicly.
+
+---
 
 ## License
 
