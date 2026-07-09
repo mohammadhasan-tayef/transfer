@@ -158,6 +158,42 @@ def migrate_liked_songs(
     }
 
 
+def _existing_playlist_ids(yt) -> dict[str, str]:
+    """Map lowercased playlist title → YouTube playlist ID.
+
+    If duplicate titles exist (from interrupted/raced migrations), prefer the
+    playlist that already has the most tracks so we refill the fullest copy.
+    """
+    from spyt.ytmusic_client import get_playlist_video_ids
+
+    best: dict[str, tuple[str, int]] = {}
+    try:
+        for item in yt.get_library_playlists(limit=100) or []:
+            title = (item.get("title") or "").strip()
+            playlist_id = item.get("playlistId")
+            if not title or not playlist_id or playlist_id in ("LM", "SE"):
+                continue
+            key = title.casefold()
+            try:
+                count = len(get_playlist_video_ids(yt, playlist_id))
+            except Exception:
+                count = int(item.get("count") or 0)
+            prev = best.get(key)
+            if prev is None or count >= prev[1]:
+                best[key] = (playlist_id, count)
+    except Exception:
+        pass
+    return {key: playlist_id for key, (playlist_id, _) in best.items()}
+
+
+def _playlist_track_count(yt, playlist_id: str) -> int:
+    try:
+        details = yt.get_playlist(playlist_id, limit=None)
+        return len(details.get("tracks") or [])
+    except Exception:
+        return 0
+
+
 def migrate_playlists(
     *,
     dry_run: bool = False,
@@ -166,7 +202,10 @@ def migrate_playlists(
     skip_liked: bool = True,
 ) -> dict:
     """Create YouTube Music playlists and fill them with matched tracks."""
+    from spyt.ytmusic_client import get_playlist_video_ids
+
     yt_lib = create_ytmusic_client() if not dry_run else None
+    existing = _existing_playlist_ids(yt_lib) if yt_lib else {}
 
     if use_backup:
         playlists = _playlists_from_dict((_load_backup(backup_path).get("playlists") or []))
@@ -180,6 +219,27 @@ def migrate_playlists(
         if skip_liked and playlist.is_liked_songs:
             continue
 
+        key = playlist.name.casefold()
+        already_id = existing.get(key)
+        expected = len(playlist.tracks)
+
+        # Skip only fully complete playlists to avoid rematching for hours.
+        if already_id and not dry_run:
+            current_count = _playlist_track_count(yt_lib, already_id)
+            if expected and current_count >= int(expected * 0.95):
+                summary["playlists"].append(
+                    {
+                        "name": playlist.name,
+                        "total": expected,
+                        "matched": current_count,
+                        "unmatched": 0,
+                        "youtube_playlist_id": already_id,
+                        "skipped": "already complete",
+                    }
+                )
+                print(f"\n[spyt] Skipping complete playlist: {playlist.name} ({current_count}/{expected})")
+                continue
+
         video_ids, unmatched = _match_tracks(
             None,
             playlist.tracks,
@@ -189,21 +249,170 @@ def migrate_playlists(
 
         entry = {
             "name": playlist.name,
-            "total": len(playlist.tracks),
+            "total": expected,
             "matched": len(video_ids),
             "unmatched": len(unmatched),
         }
 
         if not dry_run and video_ids:
             description = playlist.description or "Imported from Spotify"
-            new_id = create_playlist(yt_lib, playlist.name, description)
-            add_tracks_to_playlist(yt_lib, new_id, video_ids)
-            entry["youtube_playlist_id"] = new_id
-            time.sleep(YTM_REQUEST_DELAY_SEC)
+            try:
+                if already_id:
+                    new_id = already_id
+                    entry["reused"] = True
+                    already_present = get_playlist_video_ids(yt_lib, new_id)
+                    missing = [vid for vid in video_ids if vid not in already_present]
+                    entry["already_present"] = len(already_present)
+                    entry["to_add"] = len(missing)
+                    print(
+                        f"\n[spyt] Refilling {playlist.name}: "
+                        f"{len(already_present)} present, {len(missing)} missing"
+                    )
+                    add_tracks_to_playlist(yt_lib, new_id, missing)
+                else:
+                    new_id = create_playlist(yt_lib, playlist.name, description)
+                    existing[key] = new_id
+                    time.sleep(YTM_REQUEST_DELAY_SEC * 2)
+                    add_tracks_to_playlist(yt_lib, new_id, video_ids)
+                final_count = _playlist_track_count(yt_lib, new_id)
+                entry["youtube_playlist_id"] = new_id
+                entry["final_count"] = final_count
+                time.sleep(YTM_REQUEST_DELAY_SEC)
+            except Exception as exc:
+                entry["error"] = str(exc)
+                print(f"\n[spyt] Failed on playlist '{playlist.name}': {exc}")
+                print("[spyt] Continuing with remaining playlists...")
+                time.sleep(3)
 
         summary["playlists"].append(entry)
 
     return summary
+
+
+def verify_and_refill_playlists(
+    *,
+    backup_path: str | None = None,
+    complete_ratio: float = 0.98,
+) -> dict:
+    """After migration: check every playlist and add any still-missing matched tracks.
+
+    Skips playlists that are already nearly complete. Logs unmatched tracks.
+    """
+    from spyt.matcher import find_song_match
+    from spyt.ytmusic_client import (
+        create_ytmusic_search_client,
+        get_playlist_video_ids,
+    )
+
+    playlists = _playlists_from_dict((_load_backup(backup_path).get("playlists") or []))
+    yt_lib = create_ytmusic_client()
+    search = create_ytmusic_search_client()
+
+    report: dict = {"playlists": [], "created": 0, "refilled": 0, "complete": 0, "failed": 0}
+
+    print("\n[spyt] Post-migration verify: checking all playlists for missing tracks...")
+    print("[spyt] If duplicates exist, the fullest playlist is used (no new duplicates).")
+
+    for playlist in tqdm(playlists, desc="Verify/refill", unit="playlist"):
+        if playlist.is_liked_songs:
+            continue
+
+        key = playlist.name.casefold()
+        expected = len(playlist.tracks)
+        entry: dict = {
+            "name": playlist.name,
+            "backup": expected,
+            "before": 0,
+            "added": 0,
+            "final": 0,
+            "unmatched": 0,
+        }
+
+        try:
+            # Re-scan each time so we never create a duplicate while another job runs.
+            existing = _existing_playlist_ids(yt_lib)
+            playlist_id = existing.get(key)
+            if not playlist_id:
+                print(f"\n[spyt] Creating missing playlist: {playlist.name}")
+                playlist_id = create_playlist(
+                    yt_lib,
+                    playlist.name,
+                    playlist.description or "Imported from Spotify",
+                )
+                report["created"] += 1
+                time.sleep(YTM_REQUEST_DELAY_SEC * 2)
+
+            present = get_playlist_video_ids(yt_lib, playlist_id)
+            entry["before"] = len(present)
+            if expected and len(present) >= int(expected * complete_ratio):
+                entry["final"] = len(present)
+                entry["status"] = "complete"
+                report["complete"] += 1
+                print(
+                    f"\n[spyt] OK {playlist.name}: {len(present)}/{expected}"
+                )
+                report["playlists"].append(entry)
+                continue
+
+            print(
+                f"\n[spyt] Incomplete {playlist.name}: "
+                f"{len(present)}/{expected} — rematching missing tracks..."
+            )
+            to_add: list[str] = []
+            unmatched = 0
+            for track in playlist.tracks:
+                result = find_song_match(search, track)
+                if not result.video_id:
+                    unmatched += 1
+                    _append_unmatched("track", result.to_dict())
+                    continue
+                if result.video_id not in present:
+                    to_add.append(result.video_id)
+
+            # de-dupe while preserving order
+            seen: set[str] = set()
+            unique = []
+            for vid in to_add:
+                if vid not in seen:
+                    seen.add(vid)
+                    unique.append(vid)
+
+            if unique:
+                add_tracks_to_playlist(yt_lib, playlist_id, unique, batch_size=5)
+                report["refilled"] += 1
+                time.sleep(YTM_REQUEST_DELAY_SEC)
+
+            final_ids = get_playlist_video_ids(yt_lib, playlist_id)
+            entry["added"] = len(unique)
+            entry["final"] = len(final_ids)
+            entry["unmatched"] = unmatched
+            entry["status"] = (
+                "complete"
+                if expected and len(final_ids) >= int(expected * complete_ratio)
+                else "incomplete"
+            )
+            if entry["status"] == "complete":
+                report["complete"] += 1
+            print(
+                f"[spyt] {playlist.name}: before={entry['before']} "
+                f"added={entry['added']} final={entry['final']}/{expected} "
+                f"unmatched={unmatched}"
+            )
+        except Exception as exc:
+            entry["status"] = "error"
+            entry["error"] = str(exc)
+            report["failed"] += 1
+            print(f"\n[spyt] Verify failed for '{playlist.name}': {exc}")
+            time.sleep(2)
+
+        report["playlists"].append(entry)
+
+    print(
+        f"\n[spyt] Verify done — complete={report['complete']} "
+        f"refilled={report['refilled']} created={report['created']} "
+        f"failed={report['failed']}"
+    )
+    return report
 
 
 def migrate_artists(

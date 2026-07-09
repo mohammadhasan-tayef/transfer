@@ -1,6 +1,8 @@
 """YouTube Music client setup, dual auth clients, and library write helpers."""
 
 from __future__ import annotations
+
+from ytmusicapi import YTMusic
 from ytmusicapi.auth.browser import setup_browser
 from ytmusicapi.exceptions import YTMusicServerError
 
@@ -26,6 +28,19 @@ def ytmusic_auth_mode() -> str | None:
 
 
 def _client_works(yt: YTMusic) -> bool:
+    """Check whether an authenticated client can read private library data."""
+    # Some accounts return 400 on get_account_info despite valid session cookies.
+    # Library endpoints are a better indicator for migration readiness.
+    for check in (
+        lambda: yt.get_library_playlists(limit=1),
+        lambda: yt.get_library_songs(limit=1),
+    ):
+        try:
+            check()
+            return True
+        except Exception:
+            continue
+
     try:
         yt.get_account_info()
         return True
@@ -105,20 +120,28 @@ def create_ytmusic_search_client() -> YTMusic:
 def create_ytmusic_client() -> YTMusic:
     """Authenticated client — required to like songs and create playlists."""
     proxies = get_proxies() or None
-
+    # Browser headers are the primary auth path for this project.
+    # Do not preflight-check aggressively here because some sessions fail read probes
+    # but still work for migration actions.
     if YTMUSIC_BROWSER_AUTH.is_file():
-        yt = YTMusic(str(YTMUSIC_BROWSER_AUTH), proxies=proxies)
-        if _client_works(yt):
-            return yt
+        return YTMusic(str(YTMUSIC_BROWSER_AUTH), proxies=proxies)
 
-    if YTMUSIC_OAUTH_AUTH.is_file():
-        yt = YTMusic(str(YTMUSIC_OAUTH_AUTH), proxies=proxies)
-        if _client_works(yt):
-            return yt
+    # OAuth is legacy in spyt; only use it when browser auth is not configured.
+    if not YTMUSIC_BROWSER_AUTH.is_file() and YTMUSIC_OAUTH_AUTH.is_file():
+        try:
+            yt = YTMusic(str(YTMUSIC_OAUTH_AUTH), proxies=proxies)
+            if _client_works(yt):
+                return yt
+        except Exception as exc:
+            raise RuntimeError(
+                "YouTube Music OAuth config is invalid. Re-run browser setup:\n"
+                "  python -m spyt setup-ytmusic"
+            ) from exc
 
     raise RuntimeError(
         "YouTube Music auth is missing or broken. Run:\n"
-        "  python -m spyt setup-ytmusic"
+        "  python -m spyt setup-ytmusic\n"
+        "If VPN/proxy is on, keep it active in both browser and terminal."
     )
 
 
@@ -144,10 +167,47 @@ def create_playlist(yt: YTMusic, title: str, description: str = "") -> str:
     return yt.create_playlist(title, description)
 
 
+def get_playlist_video_ids(yt: YTMusic, playlist_id: str) -> set[str]:
+    """Return video IDs already present in a YouTube Music playlist."""
+    try:
+        details = yt.get_playlist(playlist_id, limit=None)
+    except Exception:
+        return set()
+    ids: set[str] = set()
+    for track in details.get("tracks") or []:
+        video_id = track.get("videoId")
+        if video_id:
+            ids.add(video_id)
+    return ids
+
+
 def add_tracks_to_playlist(
-    yt: YTMusic, playlist_id: str, video_ids: list[str], batch_size: int = 25
+    yt: YTMusic, playlist_id: str, video_ids: list[str], batch_size: int = 10
 ) -> None:
-    """Add video IDs to a playlist in batches (YouTube API limit ~25 per call)."""
-    for i in range(0, len(video_ids), batch_size):
-        batch = video_ids[i : i + batch_size]
-        yt.add_playlist_items(playlist_id, batch, duplicates=False)
+    """Add video IDs to a playlist in small batches with retries."""
+    import time
+
+    from spyt.config import YTM_REQUEST_DELAY_SEC
+
+    existing = get_playlist_video_ids(yt, playlist_id)
+    to_add = [vid for vid in video_ids if vid and vid not in existing]
+    if not to_add:
+        return
+
+    for i in range(0, len(to_add), batch_size):
+        batch = to_add[i : i + batch_size]
+        for attempt in range(5):
+            try:
+                yt.add_playlist_items(playlist_id, batch, duplicates=False)
+                break
+            except Exception as exc:
+                msg = str(exc)
+                retryable = any(
+                    token in msg
+                    for token in ("409", "429", "timed out", "Timeout", "SSL", "Max retries")
+                )
+                if retryable and attempt < 4:
+                    time.sleep(2 + attempt * 2)
+                    continue
+                raise
+        time.sleep(YTM_REQUEST_DELAY_SEC)

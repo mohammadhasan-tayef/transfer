@@ -31,6 +31,7 @@ from spyt.migrate import (
     migrate_artists,
     migrate_liked_songs,
     migrate_playlists,
+    verify_and_refill_playlists,
 )
 from spyt.spotify_auth import SpotifyPremiumRequiredError
 from spyt.spotify_client import create_spotify_client
@@ -217,6 +218,15 @@ def cmd_migrate_playlists(args: argparse.Namespace) -> int:
         use_backup=args.from_backup,
         backup_path=args.backup,
     )
+    if not args.dry_run:
+        result["verify"] = verify_and_refill_playlists(backup_path=args.backup)
+    _print_json(result)
+    return 0
+
+
+def cmd_refill_playlists(args: argparse.Namespace) -> int:
+    """Check all migrated playlists and add any still-missing tracks."""
+    result = verify_and_refill_playlists(backup_path=args.backup)
     _print_json(result)
     return 0
 
@@ -347,6 +357,13 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("migrate-playlists", help="Migrate playlists")
     add_migrate_flags(p)
     p.set_defaults(func=cmd_migrate_playlists)
+
+    p = sub.add_parser(
+        "refill-playlists",
+        help="After migration: check each playlist and add any missing tracks",
+    )
+    p.add_argument("--backup", help="Path to backup JSON (default: .spyt/backup.json)")
+    p.set_defaults(func=cmd_refill_playlists)
 
     p = sub.add_parser("migrate-artists", help="Migrate followed artists")
     add_migrate_flags(p)

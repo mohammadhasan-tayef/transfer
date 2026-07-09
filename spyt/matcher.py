@@ -91,6 +91,12 @@ def _search_queries(track: Track) -> list[str]:
         f"{primary_artist} {track.title}",
         track.title,
     ]
+    if track.album:
+        queries.append(f"{track.title} {track.album}")
+    # Extra artists help when first artist is a feature credit
+    if len(track.artists) > 1:
+        queries.append(f"{track.title} {track.artists[1]}")
+        queries.append(f"{' '.join(track.artists[:2])} {track.title}")
     seen: set[str] = set()
     unique: list[str] = []
     for query in queries:
@@ -101,20 +107,41 @@ def _search_queries(track: Track) -> list[str]:
     return unique
 
 
+def _search_with_retry(
+    yt: YTMusic, query: str, *, filter: str | None = "songs", retries: int = 4
+) -> list[dict]:
+    """Search with retries for proxy/timeout SSL failures."""
+    last_exc: Exception | None = None
+    for attempt in range(retries):
+        try:
+            kwargs = {"filter": filter} if filter else {}
+            return yt.search(query, limit=10, **kwargs) or []
+        except Exception as exc:
+            last_exc = exc
+            time.sleep(1.5 * (attempt + 1))
+    if last_exc:
+        raise last_exc
+    return []
+
+
 def find_song_match(yt: YTMusic, track: Track) -> MatchResult:
     """Search YouTube Music and return the best fuzzy match above ``MIN_MATCH_SCORE``."""
     best: dict | None = None
     best_score = 0
 
-    for query in _search_queries(track):
-        results = yt.search(query, filter="songs", limit=8)
-        time.sleep(YTM_REQUEST_DELAY_SEC)
-        for result in results:
-            score = _score_track(track, result)
-            if score > best_score:
-                best = result
-                best_score = score
-        if best_score >= 90:
+    # Prefer songs, then fall back to broader search for hard-to-find tracks.
+    for filter_name in ("songs", None):
+        for query in _search_queries(track):
+            results = _search_with_retry(yt, query, filter=filter_name)
+            time.sleep(YTM_REQUEST_DELAY_SEC)
+            for result in results:
+                score = _score_track(track, result)
+                if score > best_score:
+                    best = result
+                    best_score = score
+            if best_score >= 90:
+                break
+        if best_score >= MIN_MATCH_SCORE:
             break
 
     if best and best_score >= MIN_MATCH_SCORE:
