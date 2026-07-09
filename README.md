@@ -2,7 +2,9 @@
 
 **Move your Spotify library to YouTube Music — free, local, and private.**
 
-👉 **New here? Start with [`docs/READ_ME_FIRST.md`](docs/READ_ME_FIRST.md)** for a fast visual onboarding guide.
+👉 **New here? Start here:**
+- English: [`docs/READ_ME_FIRST.md`](docs/READ_ME_FIRST.md)
+- فارسی: [`docs/READ_ME_FIRST.fa.md`](docs/READ_ME_FIRST.fa.md)
 
 spyt copies your liked songs, playlists, and followed artists from Spotify to YouTube Music. It runs entirely on your computer. No paid migration services, no subscriptions, and your credentials never leave your machine.
 

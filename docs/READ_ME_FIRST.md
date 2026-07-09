@@ -4,6 +4,11 @@
 
 ![Animated transfer flow](assets/transfer-flow-animated.svg)
 
+## Language options
+
+- English: `docs/READ_ME_FIRST.md`
+- Persian (Farsi): `docs/READ_ME_FIRST.fa.md`
+
 ## 60-second overview
 
 - Export Spotify library using Exportify (browser)
