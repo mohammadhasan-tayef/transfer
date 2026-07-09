@@ -1,10 +1,11 @@
 @echo off
 title spyt - Spotify to YouTube Music
-cd /d "%~dp0"
+set "ROOT=%~dp0.."
+cd /d "%ROOT%"
 
 if not exist ".venv\Scripts\python.exe" (
     echo First time? Running setup...
-    call "%~dp0install.bat"
+    call "%~dp0\install.bat"
     if errorlevel 1 exit /b 1
 )
 

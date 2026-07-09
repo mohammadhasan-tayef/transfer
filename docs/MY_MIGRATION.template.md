@@ -1,6 +1,6 @@
 # My migration — personal notes
 
-Fill this in **before you leave**. Then run `pack-for-home.bat` to copy everything into `home-pack\` for USB or cloud.
+Fill this in **before you leave**. Then run `scripts\pack-for-home.bat` to copy everything into `home-pack\` for USB or cloud.
 
 > **Do not upload this file or `home-pack\` to GitHub.** They contain your library data.
 
@@ -54,7 +54,7 @@ Fill this in **before you leave**. Then run `pack-for-home.bat` to copy everythi
 1. Install Python 3.10+ (Add to PATH)
 2. Copy or clone the spyt project
 3. Copy `home-pack\.spyt\*` into project `.spyt\`
-4. Run `install.bat`
+4. Run `scripts\install.bat`
 5. VPN on → `python -m spyt setup-ytmusic`
 6. `python -m spyt migrate-all --from-backup`
 

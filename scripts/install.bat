@@ -1,6 +1,7 @@
 @echo off
 title spyt - one-time setup
-cd /d "%~dp0"
+set "ROOT=%~dp0.."
+cd /d "%ROOT%"
 
 echo.
 echo ========================================
@@ -42,6 +43,6 @@ if errorlevel 1 (
 echo.
 echo Setup complete!
 echo.
-echo Next: double-click "Start Spyt.bat" to begin.
+echo Next: double-click "scripts\Start Spyt.bat" to begin.
 echo.
 pause

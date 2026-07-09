@@ -2,6 +2,8 @@
 
 **Move your Spotify library to YouTube Music — free, local, and private.**
 
+👉 **New here? Start with [`docs/READ_ME_FIRST.md`](docs/READ_ME_FIRST.md)** for a fast visual onboarding guide.
+
 spyt copies your liked songs, playlists, and followed artists from Spotify to YouTube Music. It runs entirely on your computer. No paid migration services, no subscriptions, and your credentials never leave your machine.
 
 Built for real-world constraints: restricted regions (VPN), no Spotify Premium developer access, and large libraries that take hours to transfer.
@@ -52,14 +54,14 @@ The fastest way to run spyt on your own machine:
 1. Install Python  →  https://www.python.org/downloads/
                      (check "Add python.exe to PATH")
 
-2. install.bat     →  one-time setup
+2. scripts\install.bat     →  one-time setup
 
-3. Start Spyt.bat  →  guided wizard (4 steps)
+3. scripts\Start Spyt.bat  →  guided wizard (4 steps)
 ```
 
 The wizard opens websites when needed, shows a file picker for your Exportify zip, walks you through YouTube Music login, and starts the migration.
 
-**Taking work to another PC?** Fill in `MY_MIGRATION.md`, run `pack-for-home.bat`, and copy the `home-pack\` folder.
+**Taking work to another PC?** Fill in `MY_MIGRATION.md`, run `scripts\pack-for-home.bat`, and copy the `home-pack\` folder.
 
 ---
 
@@ -198,9 +200,14 @@ Use an API request — **not** the first page load (that has no cookies).
 ```
 spyt/
 ├── spyt/              # Python package
-├── install.bat        # Windows one-time setup
-├── Start Spyt.bat     # Windows guided wizard
-├── pack-for-home.bat  # Bundle data for another computer
+├── scripts/
+│   ├── install.bat        # Windows one-time setup
+│   ├── Start Spyt.bat     # Windows guided wizard
+│   └── pack-for-home.bat  # Bundle data for another computer
+├── docs/
+│   ├── GETTING_STARTED.md
+│   ├── HANDOVER.md
+│   └── MY_MIGRATION.template.md
 ├── MY_MIGRATION.md    # Personal checklist (gitignored — fill in locally)
 ├── .spyt/             # Runtime data (gitignored)
 │   ├── backup.json

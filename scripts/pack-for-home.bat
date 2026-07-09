@@ -1,6 +1,7 @@
 @echo off
 title spyt - pack files for home
-cd /d "%~dp0"
+set "ROOT=%~dp0.."
+cd /d "%ROOT%"
 
 set PACK=home-pack
 set SRC=.spyt
@@ -53,7 +54,7 @@ echo.
 echo At home:
 echo   1. Clone or copy the spyt project
 echo   2. Copy home-pack\.spyt\* into your project\.spyt\
-echo   3. Run install.bat
+echo   3. Run scripts\install.bat
 echo   4. python -m spyt setup-ytmusic
 echo   5. python -m spyt migrate-all --from-backup
 echo.

@@ -8,7 +8,7 @@ You do **not** need to know programming. Follow the steps below.
 
 ## What you need
 
-1. A **Windows** computer (Mac/Linux: see [README.md](README.md))
+1. A **Windows** computer (Mac/Linux: see [README.md](../README.md))
 2. **Python** installed ([download here](https://www.python.org/downloads/) — check **"Add python.exe to PATH"** during install)
 3. A **Spotify** account
 4. A **YouTube Music** account (free is fine)
@@ -19,8 +19,8 @@ You do **not** need to know programming. Follow the steps below.
 ## Easiest way (3 clicks)
 
 1. **Download** this project folder to your computer
-2. **Double-click** `install.bat` once (waits until it says "Setup complete")
-3. **Double-click** `Start Spyt.bat` and follow the on-screen steps
+2. **Double-click** `scripts\install.bat` once (waits until it says "Setup complete")
+3. **Double-click** `scripts\Start Spyt.bat` and follow the on-screen steps
 
 The program will:
 
@@ -69,10 +69,10 @@ This is the trickiest step. You only do it once.
 
 | Problem | What to do |
 |---------|------------|
-| "Python is not installed" | Install Python from python.org, check "Add to PATH", run `install.bat` again |
+| "Python is not installed" | Install Python from python.org, check "Add to PATH", run `scripts\install.bat` again |
 | Spotify won't open | Turn on VPN, try Exportify again in the browser |
 | YouTube login failed | Repeat Step 3 with a `browse` request (not the first page load) |
-| Copy stopped halfway | Double-click `Start Spyt.bat` again and choose "Continue from where I left off" |
+| Copy stopped halfway | Double-click `scripts\Start Spyt.bat` again and choose "Continue from where I left off" |
 | Duplicate playlists | Delete extra playlists in YouTube Music before running again |
 
 ---
